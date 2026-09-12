@@ -1,4 +1,5 @@
 <?php
+
 /**
  * SaaS API client.
  *
@@ -9,67 +10,142 @@ namespace AI_Chat_Widget\Api;
 
 use WP_Error;
 
-if ( ! defined( 'ABSPATH' ) ) {
+if (! defined('ABSPATH')) {
 	exit;
 }
 
 /** Performs authenticated server-to-server SaaS requests. */
-final class Api_Client {
-	const DEFAULT_BASE_URL = 'https://api.your-saas.com';
+final class Api_Client
+{
+	const DEFAULT_BASE_URL = 'http://192.168.100.108:8000/';
 
-	/** Validate a candidate API key. */
-	public function validate_api_key( $api_key ) {
-		$path = apply_filters( 'ai_chat_widget_validate_path', '/v1/plugin/validate' );
-		return $this->request( $path, $api_key, array(), 12 );
+	/** Validate API key and request widget auth token. */
+	public function validate_api_key($api_key)
+	{
+		$path = apply_filters(
+			'ai_chat_widget_validate_path',
+			'/api/v1/provider/widget/auth-token/'
+		);
+
+		return $this->request($path, $api_key, array(), 12);
 	}
 
 	/** Create a short-lived browser session. */
-	public function create_session( $api_key, $conversation_id = '' ) {
+	public function create_session($api_key, $conversation_id = '')
+	{
 		$body = array(
-			'origin'          => home_url(),
 			'conversation_id' => $conversation_id,
 			'plugin_version'  => AI_CHAT_WIDGET_VERSION,
 		);
 
-		$path = apply_filters( 'ai_chat_widget_session_path', '/v1/plugin/sessions' );
-		return $this->request( $path, $api_key, $body, 15 );
+		$path = apply_filters(
+			'ai_chat_widget_session_path',
+			'/v1/plugin/sessions'
+		);
+
+		return $this->request($path, $api_key, $body, 15);
 	}
 
 	/** Execute JSON POST request. */
-	private function request( $path, $api_key, $body, $timeout ) {
-		$base_url = defined( 'AI_CHAT_WIDGET_API_BASE_URL' ) ? AI_CHAT_WIDGET_API_BASE_URL : self::DEFAULT_BASE_URL;
-		$base_url = apply_filters( 'ai_chat_widget_api_base_url', $base_url );
-		$url      = untrailingslashit( esc_url_raw( $base_url ) ) . '/' . ltrim( $path, '/' );
+	private function request($path, $api_key, $body, $timeout)
+	{
+		$base_url = defined('AI_CHAT_WIDGET_API_BASE_URL')
+			? AI_CHAT_WIDGET_API_BASE_URL
+			: self::DEFAULT_BASE_URL;
 
-		if ( 'https' !== wp_parse_url( $url, PHP_URL_SCHEME ) ) {
-			return new WP_Error( 'ai_chat_insecure_api_url', __( 'The chat service URL must use HTTPS.', 'ai-chat-widget' ) );
+		$base_url = apply_filters(
+			'ai_chat_widget_api_base_url',
+			$base_url
+		);
+
+		$url = untrailingslashit(
+			esc_url_raw($base_url)
+		) . '/' . ltrim($path, '/');
+
+		$scheme = wp_parse_url($url, PHP_URL_SCHEME);
+
+		if (! in_array($scheme, array('http', 'https'), true)) {
+			return new WP_Error(
+				'ai_chat_invalid_api_url',
+				__('The chat service URL is invalid.', 'ai-chat-widget')
+			);
 		}
 
-		$response = wp_safe_remote_post(
+		/*
+		 * Origin goes in header.
+		 * Example: https://vulnerbyte.com
+		 */
+		$origin = untrailingslashit(home_url());
+
+		/*
+		 * API key goes in JSON body.
+		 */
+		$request_body = array_merge(
+			array(
+				'api_key' => trim($api_key),
+			),
+			$body
+		);
+
+		$response = wp_remote_post(
 			$url,
 			array(
 				'timeout'     => $timeout,
 				'redirection' => 0,
 				'headers'     => array(
-					'Accept'        => 'application/json',
-					'Authorization' => 'Bearer ' . $api_key,
-					'Content-Type'  => 'application/json; charset=utf-8',
-					'User-Agent'    => 'AI-Chat-Widget/' . AI_CHAT_WIDGET_VERSION . '; ' . home_url( '/' ),
+					'Accept'       => 'application/json',
+					'Content-Type' => 'application/json; charset=utf-8',
+					'Origin'       => $origin,
+					'User-Agent'   => 'AI-Chat-Widget/' . AI_CHAT_WIDGET_VERSION,
 				),
-				'body'        => wp_json_encode( (object) $body ),
+				'body' => wp_json_encode(
+					array_merge(
+						array(
+							'api_key' => trim($api_key),
+						),
+						$body
+					)
+				),
 			)
 		);
 
-		if ( is_wp_error( $response ) ) {
-			return new WP_Error( 'ai_chat_service_unavailable', __( 'The chat service could not be reached.', 'ai-chat-widget' ) );
+		if (is_wp_error($response)) {
+			return new WP_Error(
+				'ai_chat_service_unavailable',
+				$response->get_error_message(),
+				array(
+					'original_error' => $response->get_error_code(),
+				)
+			);
 		}
 
-		$status = wp_remote_retrieve_response_code( $response );
-		$data   = json_decode( wp_remote_retrieve_body( $response ), true );
+		$status = wp_remote_retrieve_response_code($response);
+		$data   = json_decode(
+			wp_remote_retrieve_body($response),
+			true
+		);
 
-		if ( $status < 200 || $status >= 300 || ! is_array( $data ) ) {
-			$message = is_array( $data ) && ! empty( $data['message'] ) ? sanitize_text_field( $data['message'] ) : __( 'The chat service rejected the request.', 'ai-chat-widget' );
-			return new WP_Error( 'ai_chat_api_error', $message, array( 'status' => $status ) );
+		if ($status < 200 || $status >= 300 || ! is_array($data)) {
+			$message = __(
+				'The chat service rejected the request.',
+				'ai-chat-widget'
+			);
+
+			if (! empty($data['message'])) {
+				$message = sanitize_text_field($data['message']);
+			} elseif (! empty($data['errors']['detail'])) {
+				$message = sanitize_text_field($data['errors']['detail']);
+			} elseif (! empty($data['detail'])) {
+				$message = sanitize_text_field($data['detail']);
+			}
+
+			return new WP_Error(
+				'ai_chat_api_error',
+				$message,
+				array(
+					'status' => $status,
+				)
+			);
 		}
 
 		return $data;
