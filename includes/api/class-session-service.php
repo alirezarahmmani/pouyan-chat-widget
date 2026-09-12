@@ -41,18 +41,20 @@ final class Session_Service {
 			return $result;
 		}
 
-		$token         = isset( $result['token'] ) && is_string( $result['token'] ) ? $result['token'] : '';
-		$websocket_url = isset( $result['websocket_url'] ) && is_string( $result['websocket_url'] ) ? esc_url_raw( $result['websocket_url'], array( 'wss' ) ) : '';
+		$data           = isset( $result['data'] ) && is_array( $result['data'] ) ? $result['data'] : array();
+		$token          = isset( $data['token'] ) && is_string( $data['token'] ) ? $data['token'] : '';
+		$websocket_url  = esc_url_raw( $this->client->get_websocket_url(), array( 'ws', 'wss' ) );
+		$websocket_scheme = wp_parse_url( $websocket_url, PHP_URL_SCHEME );
 
-		if ( '' === $token || strlen( $token ) > 4096 || 'wss' !== wp_parse_url( $websocket_url, PHP_URL_SCHEME ) ) {
+		if ( empty( $result['success'] ) || '' === $token || strlen( $token ) > 4096 || ! in_array( $websocket_scheme, array( 'ws', 'wss' ), true ) ) {
 			return new WP_Error( 'ai_chat_invalid_session', __( 'The chat service returned an invalid session.', 'ai-chat-widget' ), array( 'status' => 502 ) );
 		}
 
 		return array(
 			'token'           => $token,
 			'websocket_url'   => $websocket_url,
-			'expires_at'      => isset( $result['expires_at'] ) && is_scalar( $result['expires_at'] ) ? sanitize_text_field( (string) $result['expires_at'] ) : '',
-			'conversation_id' => isset( $result['conversation_id'] ) ? Security::sanitize_conversation_id( $result['conversation_id'] ) : $conversation_id,
+			'expires_in'      => isset( $data['expires_in'] ) ? max( 0, (int) $data['expires_in'] ) : 0,
+			'session_id'      => $conversation_id,
 		);
 	}
 }

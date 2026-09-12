@@ -30,20 +30,36 @@ final class Api_Client
 		return $this->request($path, $api_key, array(), 12);
 	}
 
-	/** Create a short-lived browser session. */
+	/** Request a fresh, single-use WebSocket token. */
 	public function create_session($api_key, $conversation_id = '')
 	{
-		$body = array(
-			'conversation_id' => $conversation_id,
-			'plugin_version'  => AI_CHAT_WIDGET_VERSION,
-		);
-
 		$path = apply_filters(
 			'ai_chat_widget_session_path',
-			'/v1/plugin/sessions'
+			'/api/v1/provider/widget/auth-token/'
 		);
 
-		return $this->request($path, $api_key, $body, 15);
+		return $this->request($path, $api_key, array(), 15);
+	}
+
+	/** Build the public WebSocket endpoint from the configured API host. */
+	public function get_websocket_url()
+	{
+		$base_url = defined('AI_CHAT_WIDGET_API_BASE_URL')
+			? AI_CHAT_WIDGET_API_BASE_URL
+			: self::DEFAULT_BASE_URL;
+
+		$base_url = apply_filters('ai_chat_widget_api_base_url', $base_url);
+		$parts    = wp_parse_url($base_url);
+
+		if (! is_array($parts) || empty($parts['scheme']) || empty($parts['host'])) {
+			return '';
+		}
+
+		$scheme = 'https' === strtolower($parts['scheme']) ? 'wss' : 'ws';
+		$port   = isset($parts['port']) ? ':' . (int) $parts['port'] : '';
+		$url    = $scheme . '://' . $parts['host'] . $port . '/ws/v1/chat/';
+
+		return apply_filters('ai_chat_widget_websocket_url', $url);
 	}
 
 	/** Execute JSON POST request. */
@@ -75,7 +91,15 @@ final class Api_Client
 		 * Origin goes in header.
 		 * Example: https://vulnerbyte.com
 		 */
-		$origin = untrailingslashit(home_url());
+		$home_parts = wp_parse_url(home_url());
+		$origin     = '';
+
+		if (is_array($home_parts) && ! empty($home_parts['scheme']) && ! empty($home_parts['host'])) {
+			$home_port = isset($home_parts['port']) ? ':' . (int) $home_parts['port'] : '';
+			$origin    = $home_parts['scheme'] . '://' . $home_parts['host'] . $home_port;
+		}
+
+		$origin = apply_filters('ai_chat_widget_origin', $origin);
 
 		/*
 		 * API key goes in JSON body.
@@ -98,14 +122,7 @@ final class Api_Client
 					'Origin'       => $origin,
 					'User-Agent'   => 'AI-Chat-Widget/' . AI_CHAT_WIDGET_VERSION,
 				),
-				'body' => wp_json_encode(
-					array_merge(
-						array(
-							'api_key' => trim($api_key),
-						),
-						$body
-					)
-				),
+				'body' => wp_json_encode($request_body),
 			)
 		);
 
