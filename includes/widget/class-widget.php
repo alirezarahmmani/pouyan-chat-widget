@@ -38,6 +38,7 @@ final class Widget {
 					'connecting'   => __( 'Connecting…', 'ai-chat-widget' ),
 					'connected'    => __( 'Online', 'ai-chat-widget' ),
 					'disconnected' => __( 'Connection lost. Reconnecting…', 'ai-chat-widget' ),
+					'generating'   => __( 'Generating response...', 'ai-chat-widget' ),
 					'error'        => __( 'Chat is temporarily unavailable. Please try again.', 'ai-chat-widget' ),
 					'empty'        => __( 'Write a message first.', 'ai-chat-widget' ),
 				),

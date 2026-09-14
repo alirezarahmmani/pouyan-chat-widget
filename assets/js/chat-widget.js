@@ -24,6 +24,7 @@
   var connectionPending = false;
   var historyLoaded = false;
   var historyRequestPromise = null;
+  var loadingIndicator = null;
 
   function getSessionId() {
     try {
@@ -60,6 +61,10 @@
     messages.setAttribute("aria-busy", disabled ? "true" : "false");
   }
 
+  function scrollToLatest() {
+    messages.scrollTop = messages.scrollHeight;
+  }
+
   function addMessage(text, role) {
     var bubble = document.createElement("div");
     bubble.className =
@@ -67,8 +72,30 @@
     bubble.setAttribute("dir", "auto");
     bubble.textContent = text;
     messages.appendChild(bubble);
-    messages.scrollTop = messages.scrollHeight;
+    scrollToLatest();
     return bubble;
+  }
+
+  function showLoadingIndicator() {
+    if (loadingIndicator) {
+      return;
+    }
+
+    loadingIndicator = document.createElement("div");
+    loadingIndicator.className =
+      "ai-chat-widget__message ai-chat-widget__message--assistant ai-chat-widget__loading";
+    loadingIndicator.setAttribute("role", "status");
+    loadingIndicator.setAttribute("aria-label", config.strings.generating);
+    loadingIndicator.innerHTML = '<span aria-hidden="true"></span>';
+    messages.appendChild(loadingIndicator);
+    scrollToLatest();
+  }
+
+  function hideLoadingIndicator() {
+    if (loadingIndicator && loadingIndicator.parentNode) {
+      loadingIndicator.parentNode.removeChild(loadingIndicator);
+    }
+    loadingIndicator = null;
   }
 
   function finishActiveResponse() {
@@ -134,6 +161,7 @@
     }
 
     if (historyMessages.length) {
+      hideLoadingIndicator();
       messages.textContent = "";
       historyMessages.forEach(function (message) {
         if (
@@ -144,6 +172,7 @@
           addMessage(message.content, message.role);
         }
       });
+      scrollToLatest();
     }
 
     historyLoaded = true;
@@ -254,6 +283,7 @@
       return;
     }
     if (data.type === "message") {
+      hideLoadingIndicator();
       addMessage(data.text || "", "assistant");
       return;
     }
@@ -263,6 +293,7 @@
       data.type === "message.delta" ||
       data.type === "response.delta"
     ) {
+      hideLoadingIndicator();
       if (!activeResponse) {
         activeResponse = addMessage("", "assistant");
       }
@@ -275,7 +306,7 @@
         "";
       window.clearTimeout(responseEndTimer);
       responseEndTimer = window.setTimeout(finishActiveResponse, 1500);
-      messages.scrollTop = messages.scrollHeight;
+      scrollToLatest();
       return;
     }
     if (
@@ -284,10 +315,12 @@
       data.type === "message.completed" ||
       data.type === "response.completed"
     ) {
+      hideLoadingIndicator();
       finishActiveResponse();
       return;
     }
     if (data.type === "error") {
+      hideLoadingIndicator();
       finishActiveResponse();
       addMessage(data.text || data.message || config.strings.error, "system");
     }
@@ -309,6 +342,7 @@
 
   function scheduleReconnect() {
     if (intentionallyClosed || reconnectAttempts >= 5) {
+      hideLoadingIndicator();
       setStatus(config.strings.error, "error");
       return;
     }
@@ -324,6 +358,7 @@
 
     var payload = { message: text, session_id: getSessionId() || null };
     addMessage(text, "user");
+    showLoadingIndicator();
     if (socket && socket.readyState === window.WebSocket.OPEN) {
       socket.send(JSON.stringify(payload));
     } else {
@@ -345,6 +380,7 @@
     launcher.setAttribute("aria-expanded", "true");
     root.classList.add("is-open");
     intentionallyClosed = false;
+    window.requestAnimationFrame(scrollToLatest);
     input.focus();
     if (!socket) {
       connect();
