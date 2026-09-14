@@ -65,12 +65,195 @@
     messages.scrollTop = messages.scrollHeight;
   }
 
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function safeLink(url) {
+    try {
+      var parsed = new URL(url, window.location.href);
+      if (
+        parsed.protocol !== "http:" &&
+        parsed.protocol !== "https:" &&
+        parsed.protocol !== "mailto:"
+      ) {
+        return "";
+      }
+      return escapeHtml(parsed.href);
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function renderInlineMarkdown(value) {
+    var tokens = [];
+    var source = String(value);
+
+    function token(html) {
+      var marker = "@@AICHATMDTOKEN" + tokens.length + "@@";
+      tokens.push(html);
+      return marker;
+    }
+
+    source = source.replace(/`([^`\n]+)`/g, function (match, code) {
+      return token("<code>" + escapeHtml(code) + "</code>");
+    });
+    source = source.replace(
+      /\[([^\]]+)\]\(([^)\s]+)\)/g,
+      function (match, label, url) {
+        var href = safeLink(url);
+        if (!href) {
+          return label;
+        }
+        return token(
+          '<a href="' +
+            href +
+            '" target="_blank" rel="noopener noreferrer">' +
+            escapeHtml(label) +
+            "</a>",
+        );
+      },
+    );
+
+    source = escapeHtml(source)
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/__([^_]+)__/g, "<strong>$1</strong>")
+      .replace(/~~([^~]+)~~/g, "<del>$1</del>")
+      .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>")
+      .replace(/(^|[^_])_([^_\n]+)_/g, "$1<em>$2</em>");
+
+    tokens.forEach(function (html, index) {
+      source = source.split("@@AICHATMDTOKEN" + index + "@@").join(html);
+    });
+    return source;
+  }
+
+  function renderMarkdown(value) {
+    var lines = String(value || "")
+      .replace(/\r\n?/g, "\n")
+      .split("\n");
+    var output = [];
+    var paragraph = [];
+    var listType = "";
+    var codeLines = [];
+    var codeLanguage = "";
+    var inCode = false;
+
+    function flushParagraph() {
+      if (paragraph.length) {
+        output.push("<p>" + renderInlineMarkdown(paragraph.join(" ")) + "</p>");
+        paragraph = [];
+      }
+    }
+
+    function closeList() {
+      if (listType) {
+        output.push("</" + listType + ">");
+        listType = "";
+      }
+    }
+
+    function flushCode() {
+      var languageClass = codeLanguage
+        ? ' class="language-' + escapeHtml(codeLanguage) + '"'
+        : "";
+      output.push(
+        "<pre><code" +
+          languageClass +
+          ">" +
+          escapeHtml(codeLines.join("\n")) +
+          "</code></pre>",
+      );
+      codeLines = [];
+      codeLanguage = "";
+    }
+
+    lines.forEach(function (line) {
+      var fence = line.match(/^```\s*([A-Za-z0-9_+-]*)\s*$/);
+      if (fence) {
+        if (inCode) {
+          flushCode();
+          inCode = false;
+        } else {
+          flushParagraph();
+          closeList();
+          inCode = true;
+          codeLanguage = fence[1] || "";
+        }
+        return;
+      }
+      if (inCode) {
+        codeLines.push(line);
+        return;
+      }
+      if (!line.trim()) {
+        flushParagraph();
+        closeList();
+        return;
+      }
+
+      var heading = line.match(/^(#{1,6})\s+(.+)$/);
+      var unordered = line.match(/^\s*[-+*]\s+(.+)$/);
+      var ordered = line.match(/^\s*\d+[.)]\s+(.+)$/);
+      var quote = line.match(/^>\s?(.*)$/);
+
+      if (heading) {
+        flushParagraph();
+        closeList();
+        var level = heading[1].length;
+        output.push(
+          "<h" + level + ">" + renderInlineMarkdown(heading[2]) + "</h" + level + ">",
+        );
+      } else if (/^\s*(?:---+|___+|\*\*\*+)\s*$/.test(line)) {
+        flushParagraph();
+        closeList();
+        output.push("<hr>");
+      } else if (quote) {
+        flushParagraph();
+        closeList();
+        output.push("<blockquote>" + renderInlineMarkdown(quote[1]) + "</blockquote>");
+      } else if (unordered || ordered) {
+        flushParagraph();
+        var nextListType = unordered ? "ul" : "ol";
+        if (listType !== nextListType) {
+          closeList();
+          listType = nextListType;
+          output.push("<" + listType + ">");
+        }
+        output.push("<li>" + renderInlineMarkdown((unordered || ordered)[1]) + "</li>");
+      } else {
+        closeList();
+        paragraph.push(line.trim());
+      }
+    });
+
+    flushParagraph();
+    closeList();
+    if (inCode) {
+      flushCode();
+    }
+    return output.join("");
+  }
+
+  function setMessageContent(bubble, text, role) {
+    if (role === "assistant") {
+      bubble.innerHTML = renderMarkdown(text);
+      return;
+    }
+    bubble.textContent = text;
+  }
+
   function addMessage(text, role) {
     var bubble = document.createElement("div");
     bubble.className =
       "ai-chat-widget__message ai-chat-widget__message--" + role;
     bubble.setAttribute("dir", "auto");
-    bubble.textContent = text;
+    setMessageContent(bubble, text, role);
     messages.appendChild(bubble);
     scrollToLatest();
     return bubble;
@@ -296,14 +479,20 @@
       hideLoadingIndicator();
       if (!activeResponse) {
         activeResponse = addMessage("", "assistant");
+        activeResponse._markdownSource = "";
       }
-      activeResponse.textContent +=
+      activeResponse._markdownSource +=
         data.chat_token ||
         data.token ||
         data.delta ||
         data.content ||
         data.text ||
         "";
+      setMessageContent(
+        activeResponse,
+        activeResponse._markdownSource,
+        "assistant",
+      );
       window.clearTimeout(responseEndTimer);
       responseEndTimer = window.setTimeout(finishActiveResponse, 1500);
       scrollToLatest();
