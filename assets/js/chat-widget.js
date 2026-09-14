@@ -11,6 +11,7 @@
   var closeButton = root.querySelector(".ai-chat-widget__close");
   var form = root.querySelector(".ai-chat-widget__composer");
   var input = form.querySelector("textarea");
+  var submitButton = form.querySelector('button[type="submit"]');
   var messages = root.querySelector(".ai-chat-widget__messages");
   var status = root.querySelector(".ai-chat-widget__status");
   var socket = null;
@@ -20,10 +21,18 @@
   var activeResponse = null;
   var responseEndTimer = null;
   var pendingMessages = [];
+  var connectionPending = false;
+  var historyLoaded = false;
+  var historyRequestPromise = null;
 
   function getSessionId() {
     try {
-      return window.localStorage.getItem(config.storage) || "";
+      var id = window.localStorage.getItem(config.storage) || "";
+      if (id && !/^[A-Za-z0-9_.:-]{1,128}$/.test(id)) {
+        window.localStorage.removeItem(config.storage);
+        return "";
+      }
+      return id;
     } catch (error) {
       return "";
     }
@@ -43,6 +52,12 @@
   function setStatus(text, state) {
     status.textContent = text;
     root.setAttribute("data-state", state || "idle");
+  }
+
+  function setComposerDisabled(disabled) {
+    input.disabled = disabled;
+    submitButton.disabled = disabled;
+    messages.setAttribute("aria-busy", disabled ? "true" : "false");
   }
 
   function addMessage(text, role) {
@@ -84,6 +99,76 @@
       });
   }
 
+  function requestHistory(sessionId) {
+    return window
+      .fetch(config.historyUrl, {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          "X-WP-Nonce": config.nonce,
+        },
+        body: JSON.stringify({ session_id: sessionId }),
+      })
+      .then(function (response) {
+        return response.json().then(function (body) {
+          if (!response.ok) {
+            throw new Error(body.message || config.strings.error);
+          }
+          return body && body.data && typeof body.data === "object"
+            ? body.data
+            : body;
+        });
+      });
+  }
+
+  function restoreHistory(history) {
+    history = history && typeof history === "object" ? history : {};
+    var historyMessages = Array.isArray(history.messages)
+      ? history.messages
+      : [];
+
+    if (history.session_id) {
+      saveSessionId(history.session_id);
+    }
+
+    if (historyMessages.length) {
+      messages.textContent = "";
+      historyMessages.forEach(function (message) {
+        if (
+          message &&
+          (message.role === "user" || message.role === "assistant") &&
+          typeof message.content === "string"
+        ) {
+          addMessage(message.content, message.role);
+        }
+      });
+    }
+
+    historyLoaded = true;
+  }
+
+  function loadHistory() {
+    var sessionId = getSessionId();
+
+    if (historyLoaded || !sessionId) {
+      historyLoaded = true;
+      return window.Promise.resolve();
+    }
+
+    if (!historyRequestPromise) {
+      historyRequestPromise = requestHistory(sessionId)
+        .then(restoreHistory)
+        .catch(function (error) {
+          historyRequestPromise = null;
+          throw error;
+        });
+    }
+
+    return historyRequestPromise;
+  }
+
   function websocketUrl(url, chat_token) {
     var parsed = new URL(url);
     parsed.searchParams.set("token", chat_token);
@@ -91,9 +176,21 @@
   }
 
   function connect() {
+    if (
+      connectionPending ||
+      (socket &&
+        (socket.readyState === window.WebSocket.CONNECTING ||
+          socket.readyState === window.WebSocket.OPEN))
+    ) {
+      return;
+    }
+
     window.clearTimeout(reconnectTimer);
+    connectionPending = true;
+    setComposerDisabled(true);
     setStatus(config.strings.connecting, "connecting");
-    requestSession()
+    loadHistory()
+      .then(requestSession)
       .then(function (session) {
         if (session.session_id) {
           saveSessionId(session.session_id);
@@ -108,13 +205,16 @@
         socket.addEventListener("error", onSocketError);
       })
       .catch(function (error) {
+        connectionPending = false;
         setStatus(error.message || config.strings.error, "error");
         scheduleReconnect();
       });
   }
 
   function onOpen() {
+    connectionPending = false;
     reconnectAttempts = 0;
+    setComposerDisabled(false);
     setStatus(config.strings.connected, "connected");
     while (pendingMessages.length) {
       socket.send(JSON.stringify(pendingMessages.shift()));
@@ -195,6 +295,8 @@
 
   function onClose(event) {
     socket = null;
+    connectionPending = false;
+    setComposerDisabled(true);
     if (!intentionallyClosed && event.code !== 1000) {
       setStatus(config.strings.disconnected, "connecting");
       scheduleReconnect();
@@ -232,6 +334,11 @@
       }
     }
   }
+
+  /* Start restoring immediately after a page refresh. connect() reuses this promise. */
+  loadHistory().catch(function () {
+    /* A connection attempt retries the history request and surfaces any error. */
+  });
 
   launcher.addEventListener("click", function () {
     panel.hidden = false;

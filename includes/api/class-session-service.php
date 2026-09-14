@@ -57,4 +57,55 @@ final class Session_Service {
 			'session_id'      => $conversation_id,
 		);
 	}
+
+	/** Retrieve and normalize the history of an existing session. */
+	public function history( $session_id ) {
+		$status  = get_option( 'ai_chat_widget_api_key_status', array() );
+		$api_key = Security::decrypt( get_option( 'ai_chat_widget_api_key', '' ) );
+
+		if ( empty( $status['valid'] ) || '' === $api_key ) {
+			return new WP_Error( 'ai_chat_not_configured', __( 'Chat is not configured.', 'ai-chat-widget' ), array( 'status' => 503 ) );
+		}
+		if ( '' === $session_id ) {
+			return new WP_Error( 'ai_chat_invalid_session_id', __( 'The chat session is invalid.', 'ai-chat-widget' ), array( 'status' => 400 ) );
+		}
+
+		$result = $this->client->get_session_history( $api_key, $session_id );
+		if ( is_wp_error( $result ) ) {
+			$error_data = $result->get_error_data();
+			if ( is_array( $error_data ) && in_array( (int) ( $error_data['status'] ?? 0 ), array( 401, 403 ), true ) ) {
+				update_option( 'ai_chat_widget_api_key_status', array( 'valid' => false, 'checked_at' => time() ), false );
+			}
+			return $result;
+		}
+		$history = isset( $result['data'] ) && is_array( $result['data'] ) ? $result['data'] : $result;
+
+		$messages            = isset( $history['messages'] ) && is_array( $history['messages'] ) ? $history['messages'] : array();
+		$normalized_messages = array();
+
+		foreach ( $messages as $message ) {
+			if ( ! is_array( $message ) || ! isset( $message['role'], $message['content'] ) || ! is_string( $message['role'] ) || ! is_string( $message['content'] ) ) {
+				continue;
+			}
+
+			$role = sanitize_key( $message['role'] );
+			if ( ! in_array( $role, array( 'user', 'assistant' ), true ) ) {
+				continue;
+			}
+
+			$normalized_messages[] = array(
+				'role'       => $role,
+				'content'    => $message['content'],
+				'created_at' => isset( $message['created_at'] ) && is_string( $message['created_at'] ) ? sanitize_text_field( $message['created_at'] ) : '',
+			);
+		}
+
+		return array(
+			'session_id' => isset( $history['session_id'] ) && is_string( $history['session_id'] ) ? $history['session_id'] : $session_id,
+			'resumed'    => ! empty( $history['resumed'] ),
+			'turn_count' => isset( $history['turn_count'] ) ? max( 0, (int) $history['turn_count'] ) : 0,
+			'max_turns'  => isset( $history['max_turns'] ) ? max( 0, (int) $history['max_turns'] ) : 0,
+			'messages'   => $normalized_messages,
+		);
+	}
 }

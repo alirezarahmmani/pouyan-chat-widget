@@ -40,6 +40,24 @@ final class Session_Controller {
 				),
 			)
 		);
+
+		register_rest_route(
+			'ai-chat-widget/v1',
+			'/session/history',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( $this, 'get_history' ),
+				'permission_callback' => array( $this, 'permissions_check' ),
+				'args'                => array(
+					'session_id' => array(
+						'required'          => true,
+						'type'              => 'string',
+						'maxLength'         => 128,
+						'sanitize_callback' => array( Security::class, 'sanitize_conversation_id' ),
+					),
+				),
+			)
+		);
 	}
 
 	/** Enforce same-origin and request rate limits. */
@@ -66,6 +84,19 @@ final class Session_Controller {
 		}
 
 		$response = new WP_REST_Response( $result, 201 );
+		$response->header( 'Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0' );
+		$response->header( 'Pragma', 'no-cache' );
+		return $response;
+	}
+
+	/** Return the normalized history of a previously created session. */
+	public function get_history( WP_REST_Request $request ) {
+		$result = $this->service->history( $request->get_param( 'session_id' ) );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		$response = new WP_REST_Response( $result, 200 );
 		$response->header( 'Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0' );
 		$response->header( 'Pragma', 'no-cache' );
 		return $response;

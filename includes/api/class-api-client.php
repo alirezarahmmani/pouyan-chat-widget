@@ -41,6 +41,22 @@ final class Api_Client
 		return $this->request($path, $api_key, array(), 15);
 	}
 
+	/** Retrieve the messages belonging to an existing widget session. */
+	public function get_session_history($api_key, $session_id)
+	{
+		$path = apply_filters(
+			'ai_chat_widget_session_history_path',
+			'/api/v1/provider/widget/session-history/'
+		);
+
+		return $this->request(
+			$path,
+			$api_key,
+			array('session_id' => $session_id),
+			15
+		);
+	}
+
 	/** Build the public WebSocket endpoint from the configured API host. */
 	public function get_websocket_url()
 	{

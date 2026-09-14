@@ -30,9 +30,10 @@ final class Widget {
 			'ai-chat-widget',
 			'AIChatWidgetConfig',
 			array(
-				'restUrl' => esc_url_raw( rest_url( 'ai-chat-widget/v1/session' ) ),
-				'nonce'   => wp_create_nonce( 'wp_rest' ),
-				'storage' => 'ai_chat_widget_conversation_id',
+				'restUrl'    => esc_url_raw( rest_url( 'ai-chat-widget/v1/session' ) ),
+				'historyUrl' => esc_url_raw( rest_url( 'ai-chat-widget/v1/session/history' ) ),
+				'nonce'      => wp_create_nonce( 'wp_rest' ),
+				'storage'    => 'ai_chat_widget_conversation_id',
 				'strings' => array(
 					'connecting'   => __( 'Connecting…', 'ai-chat-widget' ),
 					'connected'    => __( 'Online', 'ai-chat-widget' ),
