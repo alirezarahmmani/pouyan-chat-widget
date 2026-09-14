@@ -59,9 +59,6 @@
   function finishActiveResponse() {
     window.clearTimeout(responseEndTimer);
     responseEndTimer = null;
-    if (activeResponse) {
-      activeResponse.classList.remove("is-streaming");
-    }
     activeResponse = null;
   }
 
@@ -168,7 +165,6 @@
     ) {
       if (!activeResponse) {
         activeResponse = addMessage("", "assistant");
-        activeResponse.classList.add("is-streaming");
       }
       activeResponse.textContent +=
         data.chat_token ||
