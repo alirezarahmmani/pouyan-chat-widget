@@ -41,7 +41,9 @@ final class Admin
 		if ($hook !== $this->page_hook) {
 			return;
 		}
-		wp_enqueue_style('ai-chat-widget-admin', AI_CHAT_WIDGET_URL . 'assets/css/admin.css', array(), AI_CHAT_WIDGET_VERSION);
+		// The live preview renders the real widget markup, so it needs the frontend styles too.
+		wp_enqueue_style('ai-chat-widget', AI_CHAT_WIDGET_URL . 'assets/css/chat-widget.css', array(), AI_CHAT_WIDGET_VERSION);
+		wp_enqueue_style('ai-chat-widget-admin', AI_CHAT_WIDGET_URL . 'assets/css/admin.css', array('ai-chat-widget'), AI_CHAT_WIDGET_VERSION);
 		wp_enqueue_script('ai-chat-widget-admin', AI_CHAT_WIDGET_URL . 'assets/js/admin.js', array(), AI_CHAT_WIDGET_VERSION, true);
 	}
 

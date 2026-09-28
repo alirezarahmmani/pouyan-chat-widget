@@ -3,7 +3,7 @@
  * Plugin Name:       AI Chat Widget
  * Plugin URI:        https://example.com/ai-chat-widget
  * Description:       Secure, configurable AI chat widget backed by short-lived WebSocket sessions.
- * Version:           1.0.8
+ * Version:           1.0.10
  * Requires at least: 6.2
  * Requires PHP:      7.4
  * Author:            Your Company
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'AI_CHAT_WIDGET_VERSION', '1.0.8' );
+define( 'AI_CHAT_WIDGET_VERSION', '1.0.10' );
 define( 'AI_CHAT_WIDGET_FILE', __FILE__ );
 define( 'AI_CHAT_WIDGET_PATH', plugin_dir_path( __FILE__ ) );
 define( 'AI_CHAT_WIDGET_URL', plugin_dir_url( __FILE__ ) );

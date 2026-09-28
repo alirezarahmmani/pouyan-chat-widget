@@ -14,6 +14,7 @@
   var submitButton = form.querySelector('button[type="submit"]');
   var messages = root.querySelector(".ai-chat-widget__messages");
   var status = root.querySelector(".ai-chat-widget__status");
+  var counter = root.querySelector(".ai-chat-widget__counter");
   var socket = null;
   var reconnectTimer = null;
   var reconnectAttempts = 0;
@@ -559,28 +560,76 @@
     }
   }
 
-  /* Start restoring immediately after a page refresh. connect() reuses this promise. */
-  loadHistory().catch(function () {
-    /* A connection attempt retries the history request and surfaces any error. */
-  });
+  /* Without a valid API connection the UI is shown read-only and no requests are made. */
+  if (!config.connected) {
+    setComposerDisabled(true);
+    setStatus(config.strings.offline, "error");
+  } else {
+    /* Start restoring immediately after a page refresh. connect() reuses this promise. */
+    loadHistory().catch(function () {
+      /* A connection attempt retries the history request and surfaces any error. */
+    });
+  }
 
-  launcher.addEventListener("click", function () {
+  function openPanel() {
     panel.hidden = false;
     launcher.setAttribute("aria-expanded", "true");
     root.classList.add("is-open");
     intentionallyClosed = false;
     window.requestAnimationFrame(scrollToLatest);
     input.focus();
-    if (!socket) {
+    if (!socket && config.connected) {
       connect();
     }
-  });
-  closeButton.addEventListener("click", function () {
+  }
+
+  function closePanel() {
     panel.hidden = true;
     launcher.setAttribute("aria-expanded", "false");
     root.classList.remove("is-open");
     launcher.focus();
+  }
+
+  /* Keeps the send button state, height and character counter in sync with the input. */
+  function refreshComposer() {
+    var length = input.value.length;
+    var limit = input.maxLength > 0 ? input.maxLength : 0;
+    form.classList.toggle("is-empty", !input.value.trim());
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 140) + "px";
+    if (counter) {
+      var nearLimit = limit && length >= limit * 0.8;
+      counter.textContent = nearLimit ? length + " / " + limit : "";
+      counter.classList.toggle("is-near-limit", !!nearLimit);
+    }
+  }
+
+  launcher.addEventListener("click", function () {
+    if (panel.hidden) {
+      openPanel();
+    } else {
+      closePanel();
+    }
   });
+  closeButton.addEventListener("click", closePanel);
+  root.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && !panel.hidden) {
+      closePanel();
+    }
+  });
+  /* File and voice input are placeholders until the backend supports them. */
+  Array.prototype.forEach.call(
+    root.querySelectorAll('.ai-chat-widget__tool[aria-disabled="true"]'),
+    function (tool) {
+      tool.addEventListener("click", function (event) {
+        event.preventDefault();
+        tool.classList.add("is-nudged");
+        window.setTimeout(function () {
+          tool.classList.remove("is-nudged");
+        }, 1400);
+      });
+    },
+  );
   form.addEventListener("submit", function (event) {
     event.preventDefault();
     var text = input.value.trim();
@@ -588,20 +637,20 @@
       setStatus(config.strings.empty, "error");
       return;
     }
+    if (!config.connected) {
+      return;
+    }
     input.value = "";
-    input.style.height = "";
+    refreshComposer();
     sendMessage(text);
   });
   input.addEventListener("keydown", function (event) {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
       form.requestSubmit();
     }
   });
-  input.addEventListener("input", function () {
-    input.style.height = "auto";
-    input.style.height = Math.min(input.scrollHeight, 120) + "px";
-  });
+  input.addEventListener("input", refreshComposer);
   window.addEventListener("beforeunload", function () {
     intentionallyClosed = true;
     if (socket) {
