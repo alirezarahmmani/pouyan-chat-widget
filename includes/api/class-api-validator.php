@@ -38,7 +38,7 @@ final class Api_Validator
 		) {
 			return new \WP_Error(
 				'ai_chat_invalid_api_key',
-				__('The API key is not valid for this site.', 'ai-chat-widget')
+				__('این کلید API برای این سایت معتبر نیست.', 'ai-chat-widget')
 			);
 		}
 

@@ -64,7 +64,7 @@ final class Settings {
 
 		$encrypted = Security::encrypt( $api_key );
 		if ( '' === $encrypted ) {
-			add_settings_error( 'ai_chat_widget_api_key', 'encryption_failed', __( 'The API key could not be encrypted on this server.', 'ai-chat-widget' ), 'error' );
+			add_settings_error( 'ai_chat_widget_api_key', 'encryption_failed', __( 'رمزنگاری کلید API روی این سرور امکان‌پذیر نبود.', 'ai-chat-widget' ), 'error' );
 			return $current;
 		}
 
@@ -73,7 +73,7 @@ final class Settings {
 			array( 'valid' => true, 'checked_at' => time() ),
 			false
 		);
-		add_settings_error( 'ai_chat_widget_api_key', 'api_key_valid', __( 'API key validated and saved securely.', 'ai-chat-widget' ), 'success' );
+		add_settings_error( 'ai_chat_widget_api_key', 'api_key_valid', __( 'کلید API اعتبارسنجی و به‌صورت امن ذخیره شد.', 'ai-chat-widget' ), 'success' );
 		return $encrypted;
 	}
 

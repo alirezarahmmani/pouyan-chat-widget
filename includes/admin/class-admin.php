@@ -25,8 +25,8 @@ final class Admin
 	public function add_menu()
 	{
 		$this->page_hook = add_menu_page(
-			__('AI Chat Widget', 'ai-chat-widget'), // Page title
-			__('AI Chat Widget', 'ai-chat-widget'), // Menu title
+			__('ویجت چت هوشمند', 'ai-chat-widget'), // Page title
+			__('ویجت چت هوشمند', 'ai-chat-widget'), // Menu title
 			'manage_options',                         // Capability
 			'ai-chat-widget',                         // Menu slug
 			array($this, 'render_page'),            // Callback
